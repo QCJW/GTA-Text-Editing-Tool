@@ -83,26 +83,22 @@ except ImportError as e:
 
 
 def _get_key_validation_message(version, file_type='gxt'):
-    if file_type == 'dat': return "DAT文件键名必须是0x或0X开头的8位十六进制数 (例如: 0x12345678)"
     if version == 'VC': return "VC键名必须是1-7位数字、大写字母或下划线"
     if version == 'SA': return "SA键名必须是1-8位十六进制数"
     if version == 'III': return "III键名必须是1-7位数字、字母或下划线"
-    if version == 'IV': return "IV键名必须是字母数字下划线组成的明文，或是0x/0X开头的8位十六进制数"
+    if version == 'IV' or version == 'WHM': return "键名必须是字母数字下划线组成的明文，或是0x/0X开头的8位十六进制数"
     if version == 'V': return "V键名必须是明文，或是0x/0X开头的8位十六进制数"
     return "键名格式不正确"
 
 
 def _validate_key_static(key, version, file_type='gxt'):
-    if file_type == 'dat':
-        return re.fullmatch(r'0[xX][0-9a-fA-F]{8}', key) is not None
-    
     if version == 'VC':
         return re.fullmatch(r'[0-9A-Z_]{1,7}', key) is not None
     elif version == 'SA':
         return re.fullmatch(r'[0-9a-fA-F]{1,8}', key) is not None
     elif version == 'III':
         return re.fullmatch(r'[0-9a-zA-Z_]{1,7}', key) is not None
-    elif version == 'IV' or version == 'V':
+    elif version == 'IV' or version == 'V' or version == 'WHM':
         if key.lower().startswith('0x'):
             return re.fullmatch(r'0[xX][0-9a-fA-F]{8}', key) is not None
         else:
@@ -284,8 +280,6 @@ class ImageViewer(QDialog):
         self.image_label.resize(scaled_pixmap.size())
 
     def _perform_zoom_at(self, delta_y, point_under_cursor):
-        """delta_y: angleDelta().y()（>0 放大, <0 缩小）
-           point_under_cursor: QPoint（相对于 scroll_area.viewport() 的局部坐标）"""
         if delta_y == 0:
             return
 
@@ -1619,7 +1613,10 @@ class EditKeyDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setMinimumWidth(520)
-        self.version = version
+        if file_type == 'dat':
+            self.version = "WHM"
+        else:
+            self.version = version
         self.file_type = file_type
         self.original_key = key
         
@@ -2171,7 +2168,8 @@ class GXTEditorApp(QMainWindow):
         menubar.addMenu(tools_menu)
         self.font_generator_action = self._act("🎨 GTA 字体贴图生成器", self.open_font_generator)
         tools_menu.addAction(self.font_generator_action)
-        tools_menu.addAction(self._act("🔄 码表转换工具", self.open_codepage_converter))
+        self.codepage_converter_action = self._act("🔄 码表转换工具", self.open_codepage_converter)
+        tools_menu.addAction(self.codepage_converter_action)
         tools_menu.addAction(self._act("🛠️ WHM 文本提取工具", self.open_whm_batch_tool))
         
         help_menu = QMenu("帮助", self)
@@ -2564,7 +2562,7 @@ class GXTEditorApp(QMainWindow):
             
         name, ok = QInputDialog.getText(self, "新建表", "请输入表名：")
         if ok and name.strip():
-            name = name.strip()
+            name = name.strip().upper()
             if not self.validate_table_name(name):
                 QMessageBox.warning(self, "错误", f"表名 '{name}' 格式不正确！\n{self.get_table_validation_error_message()}")
                 return
@@ -2609,7 +2607,7 @@ class GXTEditorApp(QMainWindow):
         old = self.current_table
         new, ok = QInputDialog.getText(self, "重命名表", "请输入新名称：", text=old)
         if ok and new.strip():
-            new = new.strip()
+            new = new.strip().upper()
             if not self.validate_table_name(new):
                 QMessageBox.warning(self, "错误", f"表名 '{new}' 格式不正确！\n{self.get_table_validation_error_message()}")
                 return
@@ -2636,7 +2634,7 @@ class GXTEditorApp(QMainWindow):
         if not filepath: return
         try:
             with open(filepath, 'w', encoding='utf-8') as f:
-                if self.version != 'III' and self.version != 'V': f.write(f"[{self.current_table}]\n")
+                if self.version not in ['III', 'V'] and self.file_type != 'dat': f.write(f"[{self.current_table}]\n")
                 for k, v in sorted(self.data[self.current_table].items()): f.write(f"{k}={v}\n")
             QMessageBox.information(self, "导出成功", f"表 '{self.current_table}' 已导出到:\n{filepath}")
         except Exception as e:
@@ -2987,6 +2985,7 @@ class GXTEditorApp(QMainWindow):
 
                 if reader.hasTables():
                     for name, offset in reader.parseTables(mm):
+                        name = name.upper()
                         mm.seek(offset)
                         self.data[name] = dict(reader.parseTKeyTDat(mm))
                 else:
@@ -3017,7 +3016,7 @@ class GXTEditorApp(QMainWindow):
             parsed_data = gta5_gxt2.parse_gxt2(path)
             self.data.clear()
 
-            table_name = Path(path).stem
+            table_name = Path(path).stem.upper()
             self.data[table_name] = {f'0x{h:08X}': v for h, v in parsed_data.items()}
 
             self.version = 'V'
@@ -3042,7 +3041,6 @@ class GXTEditorApp(QMainWindow):
     def open_dat(self, path=None):
         """
         打开 whm_table.dat 文件
-        (已重构为使用 GTA4_WHM_Text_Extractor.py 的逻辑)
         """
         try:
             data = Path(path).read_bytes()
@@ -3079,12 +3077,12 @@ class GXTEditorApp(QMainWindow):
             table_name = "whm_table"
             self.data[table_name] = {}
             
-            for h, off in entries:
-                if off < blob_size:
-                    j = off
+            for h, offset in entries:
+                if offset < blob_size:
+                    j = offset
                     while j < blob_size and blob[j] != 0:
                         j += 1
-                    bts = blob[off:j]
+                    bts = blob[offset:j]
                     text = self.whm_exporter.decode_bytes(bts) 
                 else:
                     text = "[BINARY]"
@@ -3116,12 +3114,15 @@ class GXTEditorApp(QMainWindow):
             if self.modified and not self.prompt_save():
                 return
             
-            dlg = VersionDialog(self, default="V")
+            dlg = VersionDialog(self, default="V", include_whm=True)
             if dlg.exec() != QDialog.DialogCode.Accepted:
                 return
             version = dlg.get_value()
         else:
             version = self.version
+            if self.file_type == 'dat':
+                version = 'WHM'
+
 
         if not files:
             files, _ = QFileDialog.getOpenFileNames(self, "打开TXT文件", "", "文本文件 (*.txt);;所有文件 (*.*)")
@@ -3142,7 +3143,7 @@ class GXTEditorApp(QMainWindow):
             if version == 'V':
                 for file_path in files:
                     parsed_dict = gta5_gxt2.parse_txt(file_path)
-                    table_name = Path(file_path).stem
+                    table_name = Path(file_path).stem.upper()
                     if table_name not in temp_data:
                         temp_data[table_name] = {}
                     for h, v in parsed_dict.items():
@@ -3158,9 +3159,13 @@ class GXTEditorApp(QMainWindow):
 
             if not is_merge_mode:
                 self.data = temp_data
-                self.version = version
+                if version == 'WHM':
+                    self.version = 'IV'
+                    self.file_type = 'dat'
+                else:
+                    self.version = version
+                    self.file_type = 'gxt'
                 self.filepath = None
-                self.file_type = 'gxt'
                 self.set_modified(True)
                 QMessageBox.information(self, "成功", f"已成功打开 {len(files)} 个TXT文件\n版本: {version}\n表数量: {len(self.data)}")
             else:
@@ -3215,7 +3220,7 @@ class GXTEditorApp(QMainWindow):
         examples = {
             'IV': (
                 "<b>对于 GTA IV (需要表):</b>",
-                "[TABLE_NAME]\nPLAINTEXT_KEY=Some Text\n0x12345678=Text with hash key"
+                "[TABLE_NAME]\nPLAINTEXT_KEY=Some Text\n0x8D279791=Text with hash key"
             ),
             'VC': (
                 "<b>对于 GTA: Vice City (需要表):</b>",
@@ -3223,7 +3228,7 @@ class GXTEditorApp(QMainWindow):
             ),
             'SA': (
                 "<b>对于 GTA: San Andreas (需要表):</b>",
-                "[MAIN]\ndeadbeef=Some Text\n1a2b3c=Max 8 hex chars"
+                "[MAIN]\02D08587=Some Text\0515857D=Max 8 hex chars"
             ),
             'III': (
                 "<b>对于 GTA III (不需要表):</b>",
@@ -3231,7 +3236,11 @@ class GXTEditorApp(QMainWindow):
             ),
             'V': (
                 "<b>对于 GTA V (不需要表):</b>",
-                "PLAINTEXT_KEY=Some Text\n0x12345678=Text with hash key"
+                "PLAINTEXT_KEY=Some Text\n0x4DCE05DA=Text with hash key"
+            ),
+            'WHM': (
+                "<b>对于 WHM Table (不需要表):</b>",
+                "PLAINTEXT_KEY=Some Text\n0x8D279791=Text with hash key"
             ),
         }
         
@@ -3305,6 +3314,7 @@ class GXTEditorApp(QMainWindow):
         )
         
         self.font_generator_action.setEnabled(not is_gta5)
+        self.codepage_converter_action.setEnabled(not is_gta5)
 
     def save_file(self):
         if not self.version: 
@@ -3360,7 +3370,10 @@ class GXTEditorApp(QMainWindow):
 
                 for key, text in table_content.items():
                     try:
-                        hash_val = int(key, 16)
+                        if key.lower().startswith('0x'):
+                            hash_val = int(key, 16)
+                        else:
+                            hash_val = gta4_gxt_hash(key)
                     except ValueError:
                         print(f"警告：跳过无效的哈希键 '{key}'")
                         continue
@@ -3555,14 +3568,24 @@ class GXTEditorApp(QMainWindow):
             QMessageBox.critical(self, "错误", f"导出失败: {str(e)}")
 
     def _load_standard_txt(self, files, version):
+        """
+        重构和优化的标准TXT文件加载器，提供更精确的错误诊断。
+        """
         data = {}
         all_errors = []
-        has_tables = version not in ['III', 'V'] and self.file_type != 'dat'
+        has_tables = version not in ['III', 'V', 'WHM']
 
         for file_path in files:
-            current_table = "MAIN" if not has_tables else None
-            if not has_tables and "MAIN" not in data:
-                data["MAIN"] = {}
+            current_table = None
+            if not has_tables:
+                if version == 'WHM':
+                    current_table = "whm_table"
+                    if current_table not in data:
+                        data[current_table] = {}
+                else:
+                    current_table = "MAIN"
+                    if "MAIN" not in data:
+                        data["MAIN"] = {}
             
             try:
                 with open(file_path, 'r', encoding='utf-8-sig') as f:
@@ -3583,13 +3606,19 @@ class GXTEditorApp(QMainWindow):
                 if not line_content or line_content.startswith('//') or line_content.startswith('#'):
                     continue
                 
-                if has_tables and line_content.startswith('[') and line_content.endswith(']'):
-                    current_table = line_content[1:-1].strip()
-                    if current_table and current_table not in data:
-                        data[current_table] = {}
+                if line_content.startswith('[') and line_content.endswith(']'):
+                    if has_tables:
+                        current_table = line_content[1:-1].strip().upper()
+                        if current_table and current_table not in data:
+                            data[current_table] = {}
+                    else:
+                        msg = f"格式错误: 当前版本 ({version}) 不支持表，但文件中发现了表头 '{line_content}'"
+                        all_errors.append((file_path, line_num, line_content, msg))
+                
                 elif '=' in line_content:
-                    if current_table is None:
-                        all_errors.append((file_path, line_num, line_content, "格式错误: 在定义表([Table])之前出现了键值对"))
+                    if has_tables and current_table is None:
+                        msg = "格式错误: 在定义表 ([TableName]) 之前出现了键值对"
+                        all_errors.append((file_path, line_num, line_content, msg))
                         continue
 
                     key, value = line_content.split('=', 1)
@@ -3602,17 +3631,17 @@ class GXTEditorApp(QMainWindow):
                         continue
                         
                     if key:
-                        if version == 'IV' and not key.lower().startswith('0x'):
+                        if (version == 'IV' or version == 'WHM') and not key.lower().startswith('0x'):
                             final_key = f'0x{gta4_gxt_hash(key):08X}'
                         else:
                             final_key = key
                         
                         data[current_table][final_key] = value
+                
                 else:
                     all_errors.append((file_path, line_num, line_content, "格式错误: 行既不是表头也不是 'key=value' 格式"))
 
         return data, all_errors
-
 
     def open_codepage_converter(self):
         """打开码表转换工具"""
@@ -3736,7 +3765,7 @@ class GXTEditorApp(QMainWindow):
             "7. 保存：支持生成字符映射辅助文件（可选），并可记住选择。\n"
             "8. 导出：支持导出整个GXT或单个表为TXT文件。\n"
             "9. TXT 导入：支持单个或多个TXT导入并直接生成GXT。如果已有GXT打开，则会进行合并。\n"
-            "10. GTA IV/V 特别说明：键名可为明文（如 T1_NAME_82）或哈希（0xhash），保存时自动转换哈希。\n"
+            "10. GTA IV/V/WHM 特别说明：键名可为明文（如 T1_NAME_82）或哈希（0xhash），保存时自动转换哈希。\n"
             "11. WHM Table 支持：可以打开和保存以及编辑 GTA4 民间汉化补丁的 whm_table.dat 文件。\n"
             "12. 字体生成器：工具菜单→GTA字体贴图生成器，用于创建游戏字体PNG文件。以及支持加载外部字体文件，点击预览图可放大查看。【仅限：汉化字体贴图】\n"
             "13. 码表转换工具：用于根据自定义码表文件，对GXT文本内容进行字符的批量替换或还原。\n"
