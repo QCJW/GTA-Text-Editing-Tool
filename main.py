@@ -85,19 +85,17 @@ except ImportError as e:
 def _get_key_validation_message(version, file_type='gxt'):
     if version == 'VC': return "VC键名必须是1-7位数字、大写字母或下划线"
     if version == 'SA': return "SA键名必须是1-8位十六进制数"
-    if version == 'III': return "III键名必须是1-7位数字、字母或下划线"
+    if version == 'III': return "III键名必须是1-7位数字、大写字母或下划线"
     if version == 'IV' or version == 'WHM': return "键名必须是字母数字下划线组成的明文，或是0x/0X开头的8位十六进制数"
     if version == 'V': return "V键名必须是明文，或是0x/0X开头的8位十六进制数"
     return "键名格式不正确"
 
 
 def _validate_key_static(key, version, file_type='gxt'):
-    if version == 'VC':
+    if version == 'VC' or version == 'III':
         return re.fullmatch(r'[0-9A-Z_]{1,7}', key) is not None
     elif version == 'SA':
         return re.fullmatch(r'[0-9a-fA-F]{1,8}', key) is not None
-    elif version == 'III':
-        return re.fullmatch(r'[0-9a-zA-Z_]{1,7}', key) is not None
     elif version == 'IV' or version == 'V' or version == 'WHM':
         if key.lower().startswith('0x'):
             return re.fullmatch(r'0[xX][0-9a-fA-F]{8}', key) is not None
@@ -3228,11 +3226,11 @@ class GXTEditorApp(QMainWindow):
             ),
             'SA': (
                 "<b>对于 GTA: San Andreas (需要表):</b>",
-                "[MAIN]\02D08587=Some Text\0515857D=Max 8 hex chars"
+                "[MAIN]\n02D08587=Some Text\n0515857D=Max 8 hex chars"
             ),
             'III': (
                 "<b>对于 GTA III (不需要表):</b>",
-                "Key_1=Some Text\nMax_7_Ch=Max 7 chars, alphanumeric, _"
+                "Key_1=Some Text\nMax_7_Ch=Max 7 chars, upper, digit, _"
             ),
             'V': (
                 "<b>对于 GTA V (不需要表):</b>",
@@ -3578,14 +3576,10 @@ class GXTEditorApp(QMainWindow):
         for file_path in files:
             current_table = None
             if not has_tables:
-                if version == 'WHM':
-                    current_table = "whm_table"
-                    if current_table not in data:
-                        data[current_table] = {}
-                else:
-                    current_table = "MAIN"
-                    if "MAIN" not in data:
-                        data["MAIN"] = {}
+                table_name_map = {'WHM': "whm_table", 'III': "MAIN", 'V': "MAIN"}
+                current_table = table_name_map.get(version)
+                if current_table and current_table not in data:
+                    data[current_table] = {}
             
             try:
                 with open(file_path, 'r', encoding='utf-8-sig') as f:
@@ -3608,9 +3602,11 @@ class GXTEditorApp(QMainWindow):
                 
                 if line_content.startswith('[') and line_content.endswith(']'):
                     if has_tables:
-                        current_table = line_content[1:-1].strip().upper()
-                        if current_table and current_table not in data:
-                            data[current_table] = {}
+                        table_name = line_content[1:-1].strip().upper()
+                        if table_name:
+                            current_table = table_name
+                            if current_table not in data:
+                                data[current_table] = {}
                     else:
                         msg = f"格式错误: 当前版本 ({version}) 不支持表，但文件中发现了表头 '{line_content}'"
                         all_errors.append((file_path, line_num, line_content, msg))
@@ -3634,7 +3630,12 @@ class GXTEditorApp(QMainWindow):
                         if (version == 'IV' or version == 'WHM') and not key.lower().startswith('0x'):
                             final_key = f'0x{gta4_gxt_hash(key):08X}'
                         else:
-                            final_key = key
+                            final_key = key.upper() if version in ['VC', 'III'] or (version == 'SA' and not key.startswith('0x')) else key
+
+                        if final_key in data.get(current_table, {}):
+                            msg = f"格式错误: 在表 '{current_table}' 中发现重复的键 '{key}'"
+                            all_errors.append((file_path, line_num, line_content, msg))
+                            continue
                         
                         data[current_table][final_key] = value
                 
