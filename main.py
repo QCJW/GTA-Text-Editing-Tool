@@ -1854,7 +1854,7 @@ class VersionDialog(QDialog):
 class GXTEditorApp(QMainWindow):
     def __init__(self, file_to_open=None):
         super().__init__()
-        self.setWindowTitle(" GTA文本对话表编辑器 v2.3 作者：倾城剑舞")
+        self.setWindowTitle(" GTA文本对话表编辑器 v2.4 作者：倾城剑舞")
         self.resize(1240, 760)
         self.setAcceptDrops(True)
         
@@ -3841,7 +3841,7 @@ class GXTEditorApp(QMainWindow):
 
     def show_about(self):
         QMessageBox.information(self, "关于", 
-            "倾城剑舞 GXT 编辑器 v2.3\n"
+            "倾城剑舞 GXT 编辑器 v2.4\n"
             "支持 V/IV/VC/SA/III 的 GXT/TXT 编辑、导入导出。\n"
             "新增功能：文件关联、新建GXT、导出单个表、生成png透明汉化字体贴图、支持whm_table.dat编辑、码表转换工具、WHM文本提取工具。")
 
@@ -3902,7 +3902,7 @@ class GXTEditorApp(QMainWindow):
         """设置修改状态并更新窗口标题"""
         if self.modified == modified: return
         self.modified = modified
-        title = " GTA文本对话表编辑器 v2.3 作者：倾城剑舞"
+        title = " GTA文本对话表编辑器 v2.4 作者：倾城剑舞"
         if self.filepath:
             title = f"{os.path.basename(self.filepath)} - {title}"
         if modified:
