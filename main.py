@@ -177,7 +177,7 @@ class FontTextureGenerator:
 
     def generate_html_preview(self, settings, texture_filename, output_path):
         """生成HTML预览文件"""
-        char_width = settings['resolution'] // (64 if settings['resolution'] == 4096 else 32)
+        char_width = settings['resolution'] // 64  # 固定64列布局
         char_height_map = {"III": 80, "VC": 64, "SA": 80, "IV": 66}
         char_height = char_height_map.get(settings['version'], 64)
 
