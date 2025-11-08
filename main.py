@@ -125,24 +125,37 @@ class FontTextureGenerator:
         if not characters:
             return QPixmap()
 
-        chars_per_line = 64 if texture_size == 4096 else 32
+        chars_per_line = 64
         pixmap = QPixmap(texture_size, texture_size)
         pixmap.fill(self.bg_color)
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-        painter.setFont(font)
+        
+        scale_factor = texture_size / 4096.0
+        scaled_font = QFont(font)
+        if font.pointSize() > 0:
+            scaled_font.setPointSizeF(font.pointSizeF() * scale_factor)
+        elif font.pixelSize() > 0:
+            scaled_font.setPixelSize(int(font.pixelSize() * scale_factor))
+        
+        painter.setFont(scaled_font)
         painter.setPen(self.text_color)
 
         char_width = texture_size // chars_per_line
-        char_height_map = {"III": 80, "VC": 64, "SA": 80, "IV": 66}
-        char_height = char_height_map.get(version, 64)
+        
+        base_char_height_map = {"III": 80, "VC": 64, "SA": 80, "IV": 66}
+        base_char_height = base_char_height_map.get(version, 64)
+        char_height = int(base_char_height * scale_factor)
+        
+        scaled_margin = max(1, int(self.margin * scale_factor))
+        scaled_y_offset = int(self.y_offset * scale_factor)
 
         x, y = 0, 0
         for char in characters:
             draw_rect = QRect(
-                x + self.margin, y + self.margin + self.y_offset,
-                char_width - 2 * self.margin, char_height - 2 * self.margin
+                x + scaled_margin, y + scaled_margin + scaled_y_offset,
+                char_width - 2 * scaled_margin, char_height - 2 * scaled_margin
             )
             painter.drawText(draw_rect, Qt.AlignmentFlag.AlignCenter, char)
             x += char_width
