@@ -1864,6 +1864,21 @@ class VersionDialog(QDialog):
         return "V"
 
 
+
+class FixedTableWidget(QTableWidget):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        try:
+            self.stopAutoScroll()
+        except AttributeError:
+            pass
+
+
 class GXTEditorApp(QMainWindow):
     def __init__(self, file_to_open=None):
         super().__init__()
@@ -2258,7 +2273,7 @@ class GXTEditorApp(QMainWindow):
         search_layout.addWidget(self.global_search_button)
         c_layout.addLayout(search_layout)
         
-        self.table = QTableWidget(0, 3)
+        self.table = FixedTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["序号", "键名 (Key)", "值 (Value)"])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
