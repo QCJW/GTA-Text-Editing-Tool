@@ -98,7 +98,13 @@ class LCGXT:
                 f.write(b'\xFF\xFE')  # UTF-16 LE BOM
                 row = 0
                 col = 0
-                for char in sorted(self.m_WideCharCollection):
+                sorted_chars = sorted(self.m_WideCharCollection)
+                char_table = {}
+                
+                for char in sorted_chars:
+                    # 记录字符位置
+                    char_table[char] = (row, col)
+                    # 写入字符
                     f.write(struct.pack('<H', char))
                     col += 1
                     if col >= 64:
@@ -106,16 +112,21 @@ class LCGXT:
                         row += 1
                         col = 0
             
-            # 写入TABLE.txt
-            with open('TABLE.txt', 'w', encoding='utf-8') as f:
-                row = 0
-                col = 0
-                for char in sorted(self.m_WideCharCollection):
-                    f.write(f"m_Table[0x{char:04X}] = {{{row},{col}}};\n")
-                    col += 1
-                    if col >= 64:
-                        row += 1
-                        col = 0
+            # 生成wm_lcchs.dat
+            with open('wm_lcchs.dat', 'wb') as f:
+                # 初始化65536个默认值(63,63)对应问号字符
+                default_entry = struct.pack('BB', 63, 63)
+                for _ in range(0x10000):
+                    f.write(default_entry)
+                
+                # 更新实际字符位置
+                for char, (row, col) in char_table.items():
+                    if char < 0x10000:  # 确保字符在有效范围内
+                        f.seek(char * 2)  # 每个字符占2字节
+                        f.write(struct.pack('BB', row, col))
+            
+            print("成功生成CHARACTERS.txt和wm_lcchs.dat")
+            
         except Exception as e:
             print(f"Error generating files: {e}")
     
