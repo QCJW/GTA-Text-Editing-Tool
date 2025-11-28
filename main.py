@@ -535,12 +535,12 @@ class FontGeneratorDialog(QDialog):
         char_btn_layout.addWidget(self.btn_load_from_gxt)
         char_btn_layout.addWidget(self.btn_import_chars)
         char_btn_layout.addWidget(self.btn_input_chars)
-        self.btn_import_wm_vcchs = QPushButton('导入 wm_vcchs.dat')
-        self.btn_import_wm_vcchs.setToolTip('从 wm_vcchs.dat 文件提取字符')
+        self.btn_import_wm_vcchs = QPushButton('导入GTA3和VC汉化dat字库')
+        self.btn_import_wm_vcchs.setToolTip('从 wm_vcchs.dat、wm_lcchs.dat、Chinese.dat 文件提取字符')
         self.btn_import_wm_vcchs.clicked.connect(self.import_wm_vcchs)
         char_btn_layout.addWidget(self.btn_import_wm_vcchs)
 
-        self.btn_import_char_table = QPushButton('导入 char_table.dat')
+        self.btn_import_char_table = QPushButton('导入GTA4汉化dat字库')
         self.btn_import_char_table.setToolTip('从 char_table.dat 文件提取字符')
         self.btn_import_char_table.clicked.connect(self.import_char_table)
         char_btn_layout.addWidget(self.btn_import_char_table)
@@ -756,7 +756,7 @@ class FontGeneratorDialog(QDialog):
             return settings
 
     def import_wm_vcchs(self):
-        path, _ = QFileDialog.getOpenFileName(self, "导入 wm_vcchs.dat 或 Chinese.dat 文件", "", "VC字库 (wm_vcchs.dat Chinese.dat)")
+        path, _ = QFileDialog.getOpenFileName(self, "导入 wm_vcchs.dat、wm_lcchs.dat、Chinese.dat 文件", "", "汉化字库 (wm_vcchs.dat wm_lcchs.dat Chinese.dat)")
         if not path:
             return
         try:
@@ -772,7 +772,7 @@ class FontGeneratorDialog(QDialog):
                 sorted_chars = "".join(sorted(chars))
                 self.characters = sorted_chars
                 self.update_char_count()
-                QMessageBox.information(self, "导入成功", f"已从 wm_vcchs.dat（Chinese.dat） 读取 {len(chars)} 个字符。")
+                QMessageBox.information(self, "导入成功", f"已从 dat文件中 读取 {len(chars)} 个字符。")
             else:
                 QMessageBox.warning(self, "提示", "未提取到任何有效字符。")
         except Exception as e:
@@ -798,7 +798,7 @@ class FontGeneratorDialog(QDialog):
             if chars:
                 self.characters = "".join(sorted(set(chars)))
                 self.update_char_count()
-                QMessageBox.information(self, "导入成功", f"已从 char_table.dat 读取 {len(chars)} 个字符。")
+                QMessageBox.information(self, "导入成功", f"已从 dat文件中 读取 {len(chars)} 个字符。")
             else:
                 QMessageBox.warning(self, "提示", "文件中没有有效字符。")
         except Exception as e:
