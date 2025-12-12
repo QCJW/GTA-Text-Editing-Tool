@@ -152,9 +152,14 @@ class FontTextureGenerator:
         scaled_y_offset = int(self.y_offset * scale_factor)
 
         x, y = 0, 0
+                # 根据版本决定是否应用x轴偏移
+        x_offset_extra = 0
+        if version in ["III", "VC"]:
+            x_offset_extra = int(3 * scale_factor)
+        
         for char in characters:
             draw_rect = QRect(
-                x + scaled_margin, y + scaled_margin + scaled_y_offset,
+                x + scaled_margin - x_offset_extra, y + scaled_margin + scaled_y_offset,
                 char_width - 2 * scaled_margin, char_height - 2 * scaled_margin
             )
             painter.drawText(draw_rect, Qt.AlignmentFlag.AlignCenter, char)
