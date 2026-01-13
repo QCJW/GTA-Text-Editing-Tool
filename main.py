@@ -33,7 +33,7 @@ try:
     from gxt_parser import getVersion, getReader, MemoryMappedFile
     from IVGXT import generate_binary as write_iv, process_special_chars, gta4_gxt_hash
     from VCGXT import VCGXT
-    from SAGXT import SAGXT
+    from SAGXT import SAGXT, gta_sa_hash
     from LCGXT import LCGXT
     import gta5_gxt2
     from GTA4_WHM_Text_Extractor import CHtmlTextExport, WhmTextData
@@ -55,6 +55,7 @@ except ImportError as e:
     write_iv = mock_iv_func
     process_special_chars = mock_process_chars
     gta4_gxt_hash = mock_gxt_hash
+    gta_sa_hash = mock_gxt_hash
     class MockGxtLib:
         def __init__(self): self.m_GxtData = {}; self.m_WideCharCollection = set()
         def SaveAsGXT(self, path): pass
@@ -84,7 +85,7 @@ except ImportError as e:
 
 def _get_key_validation_message(version, file_type='gxt'):
     if version == 'VC': return "VC键名必须是1-7位数字、字母或下划线"
-    if version == 'SA': return "SA键名必须是1-8位十六进制数"
+    if version == 'SA': return "SA键名必须是明文(自动Hash)，或是Hex(0x.../8位内)"
     if version == 'III': return "III键名必须是1-7位数字、字母或下划线"
     if version == 'IV' or version == 'WHM': return "键名必须是字母数字下划线组成的明文，或是0x/0X开头的8位十六进制数"
     if version == 'V': return "V键名必须是明文，或是0x/0X开头的8位十六进制数"
@@ -95,7 +96,10 @@ def _validate_key_static(key, version, file_type='gxt'):
     if version == 'VC' or version == 'III':
         return re.fullmatch(r'[0-9a-zA-Z_]{1,7}', key) is not None
     elif version == 'SA':
-        return re.fullmatch(r'[0-9a-fA-F]{1,8}', key) is not None
+        if key.lower().startswith('0x'):
+            return re.fullmatch(r'0[xX][0-9a-fA-F]{1,8}', key) is not None
+        # SA now supports plain text hashing via JAMCRC
+        return bool(key and re.fullmatch(r'[A-Za-z0-9_]+', key)) or re.fullmatch(r'[0-9a-fA-F]{1,8}', key) is not None
     elif version == 'IV' or version == 'V' or version == 'WHM':
         if key.lower().startswith('0x'):
             return re.fullmatch(r'0[xX][0-9a-fA-F]{8}', key) is not None
@@ -1887,7 +1891,7 @@ class FixedTableWidget(QTableWidget):
 class GXTEditorApp(QMainWindow):
     def __init__(self, file_to_open=None):
         super().__init__()
-        self.setWindowTitle(" GTA文本对话表编辑器 v2.4 作者：倾城剑舞")
+        self.setWindowTitle(" GTA文本对话表编辑器 v2.5 作者：倾城剑舞")
         self.resize(1240, 760)
         self.setAcceptDrops(True)
         
@@ -3525,7 +3529,7 @@ class GXTEditorApp(QMainWindow):
                 
                 sorted_items = sorted(self.data.items(), key=cmp_to_key(lambda a, b: -1 if table_sort_method(a[0], b[0]) else 1))
                 sorted_data = OrderedDict(sorted_items)
-                g.m_GxtData = {t: {int(k, 16): v for k, v in d.items()} for t, d in sorted_data.items()}
+                g.m_GxtData = {t: {(int(k, 16) if (k.lower().startswith('0x') or (len(k)<=8 and all(c in '0123456789abcdefABCDEF' for c in k))) else gta_sa_hash(k)): v for k, v in d.items()} for t, d in sorted_data.items()}
                 if gen_extra: 
                     all_chars = {c for table in self.data.values() for value in table.values() for c in value}
                     g.m_WideCharCollection = {c for c in all_chars if ord(c) > 0x7F}
@@ -3874,7 +3878,7 @@ class GXTEditorApp(QMainWindow):
 
     def show_about(self):
         QMessageBox.information(self, "关于", 
-            "倾城剑舞 GXT 编辑器 v2.4\n"
+            "倾城剑舞 GXT 编辑器 v2.5\n"
             "支持 V/IV/VC/SA/III 的 GXT/TXT 编辑、导入导出。\n"
             "新增功能：文件关联、新建GXT、导出单个表、生成png透明汉化字体贴图、支持whm_table.dat编辑、码表转换工具、WHM文本提取工具。")
 
@@ -3889,7 +3893,7 @@ class GXTEditorApp(QMainWindow):
             "7. 保存：支持生成字符映射辅助文件（可选），并可记住选择。\n"
             "8. 导出：支持导出整个GXT或单个表为TXT文件。\n"
             "9. TXT 导入：支持单个或多个TXT导入并直接生成GXT。如果已有GXT打开，则会进行合并。\n"
-            "10. GTA IV/V/WHM 特别说明：键名可为明文（如 T1_NAME_82）或哈希（0xhash），保存时自动转换哈希。\n"
+            "10. GTASA/GTA IV/V/WHM 特别说明：键名可为明文（如 T1_NAME_82），保存时自动转换对应哈希。\n"
             "11. WHM Table 支持：可以打开和保存以及编辑 GTA4 民间汉化补丁的 whm_table.dat 文件。\n"
             "12. 字体生成器：工具菜单→GTA字体贴图生成器，用于创建游戏字体PNG文件。以及支持加载外部字体文件，点击预览图可放大查看。【仅限：汉化字体贴图】\n"
             "13. 码表转换工具：用于根据自定义码表文件，对GXT文本内容进行字符的批量替换或还原。\n"
@@ -3935,7 +3939,7 @@ class GXTEditorApp(QMainWindow):
         """设置修改状态并更新窗口标题"""
         if self.modified == modified: return
         self.modified = modified
-        title = " GTA文本对话表编辑器 v2.4 作者：倾城剑舞"
+        title = " GTA文本对话表编辑器 v2.5 作者：倾城剑舞"
         if self.filepath:
             title = f"{os.path.basename(self.filepath)} - {title}"
         if modified:
