@@ -3,7 +3,7 @@ import re
 import struct
 import sys
 
-# GTA San Andreas JAMCRC Table (Polynomial: 0xEDB88320)
+# GTA San Andreas JAMCRC 表 (多项式: 0xEDB88320)
 CRC32_TABLE = [
     0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA, 0x076DC419, 0x706AF48F, 0xE963A535, 0x9E6495A3,
     0x0EDB8832, 0x79DCB8A4, 0xE0D5E91E, 0x97D2D988, 0x09B64C2B, 0x7EB17CBD, 0xE7B82D07, 0x90BF1D91,
@@ -40,33 +40,27 @@ CRC32_TABLE = [
 ]
 
 def gta_sa_hash(key: str) -> int:
-    """
-    GTA SA 'JAMCRC' Hash Implementation.
-    Equivalent to CKeyGen::GetUppercaseKey from the C++ source.
-    """
     hash_val = 0xFFFFFFFF
     for char in key:
-        # SA hashes are case-insensitive (forces uppercase)
+        # SA 哈希不区分大小写 (强制转为大写)
         c_upper = char.upper()
         c_byte = ord(c_upper) & 0xFF
         
         idx = (hash_val ^ c_byte) & 0xFF
         hash_val = CRC32_TABLE[idx] ^ (hash_val >> 8)
         
-    return hash_val # Unlike standard CRC32, bits are NOT inverted at the end
+    return hash_val # 与标准 CRC32 不同，末尾不进行位反转
 
 class SAGXT:
     SizeOfTABL = 12
     SizeOfTKEY = 8
 
     def __init__(self):
-        self.m_GxtData = dict()  # 表名 -> {hash: 文本}
+        self.m_GxtData = dict()  # 表名 -> {哈希值: 文本}
         self.m_WideCharCollection = set()
 
     def load_text(self, path: str) -> bool:
-        # Regex adjusted to support Plaintext keys.
-        # Captures Group 1: Key (Hex or String), Group 2: Value
-        # [^=\s] means any char that is not equals sign or whitespace
+        # 正则调整为支持纯文本键。
         table_format = re.compile(r"^\[([0-9a-zA-Z_]{1,7})\]\s*$")
         entry_format = re.compile(r"^\s*([^=\s]+)\s*=\s*(.*)\s*$")
         hex_check = re.compile(r"^[0-9A-Fa-f]{1,8}$")
@@ -83,7 +77,7 @@ class SAGXT:
             with open(path, encoding='utf-8') as f:
                 raw_content = f.read()
                 
-            # Handle BOM if present
+            # 如果存在 BOM 则处理
             if raw_content.startswith('\ufeff'):
                 raw_content = raw_content[1:]
                 
@@ -98,7 +92,7 @@ class SAGXT:
                 entry_match = entry_format.match(line)
 
                 if table_match:
-                    # Parse Table Name
+                    # 解析表名
                     table_name = table_match.group(1).upper()
                     if table_name not in self.m_GxtData:
                         self.m_GxtData[table_name] = dict()
@@ -106,8 +100,8 @@ class SAGXT:
                 
                 elif entry_match:
                     if current_table is None:
-                        # Fallback to MAIN if no table defined yet
-                        print(f"Warning: Line {line_no} entry has no table, assigning to 'MAIN'")
+                        # 如果尚未定义表，则回退到 MAIN
+                        print(f"警告: 第 {line_no} 行的条目没有表，将分配到 'MAIN'")
                         if 'MAIN' not in self.m_GxtData:
                             self.m_GxtData['MAIN'] = dict()
                         current_table = self.m_GxtData['MAIN']
@@ -115,10 +109,10 @@ class SAGXT:
                     raw_key = entry_match.group(1)
                     text_value = entry_match.group(2)
 
-                    # --- Hashing Logic ---
-                    # 1. Try to interpret as raw Hex if it looks like Hex and is <= 8 chars
-                    # Note: SA GXTs often use raw hex. But "FACE" could be a word.
-                    # Heuristic: If it is valid hex, treat as ID. If not, Hash it.
+                    # --- 哈希逻辑 ---
+                    # 1. 如果看起来像十六进制且长度 <= 8，则尝试解释为原始十六进制
+                    # 注意: SA GXT 通常使用原始十六进制。但 "FACE" 可能是一个单词。
+                    # 启发式: 如果是有效的十六进制，则视为 ID。否则，对其进行哈希。
                     hash_key = 0
                     is_hex = hex_check.match(raw_key)
                     
@@ -126,24 +120,24 @@ class SAGXT:
                         try:
                             hash_key = int(raw_key, 16)
                         except ValueError:
-                            # Should not happen due to regex check, but safety fallback
+                            # 由于正则检查，不应发生，但安全回退
                             hash_key = gta_sa_hash(raw_key)
                     else:
-                        # Not hex (contains _, G-Z, etc), so hash it
+                        # 不是十六进制 (包含 _, G-Z 等)，因此进行哈希
                         hash_key = gta_sa_hash(raw_key)
 
-                    # Duplicate check
+                    # 重复检查
                     if hash_key in current_table:
-                        # If the value is different, warn user
+                        # 如果值不同，警告用户
                         if current_table[hash_key] != text_value:
                             print(f"警告: 第 {line_no} 行检测到哈希冲突或重复键!")
-                            print(f"Key: {raw_key} -> Hash: 0x{hash_key:08X}")
-                            print(f"Existing: {current_table[hash_key]}")
-                            print(f"New: {text_value}\n")
+                            print(f"键: {raw_key} -> 哈希: 0x{hash_key:08X}")
+                            print(f"已存在: {current_table[hash_key]}")
+                            print(f"新值: {text_value}\n")
                     
                     current_table[hash_key] = text_value
                     
-                    # Collect chars for font generation
+                    # 收集字符用于字体生成
                     for ch in text_value:
                         self.m_WideCharCollection.add(ch)
                 else:
@@ -157,7 +151,7 @@ class SAGXT:
     def save_as_gxt(self, path: str):
         try:
             with open(path, 'wb') as f:
-                # Header: Version 4, 8 bits (SA Standard)
+                # 头部: 版本 4, 8 位 (SA 标准)
                 f.write(struct.pack('<H', 4)) 
                 f.write(struct.pack('<H', 8)) 
 
@@ -169,58 +163,58 @@ class SAGXT:
                 fo_key_block = 12 + table_block_size
                 key_block_offset = fo_key_block
 
-                # MAIN table should ideally come first or last depending on game engine preference,
-                # but sorting by name is standard structure.
+                # MAIN 表根据游戏引擎偏好通常在最前或最后，
+                # 但按名称排序是标准结构。
                 sorted_tables = sorted(self.m_GxtData.items(), key=self._table_sort)
 
                 for table_name, entries in sorted_tables:
                     key_block_size = len(entries) * self.SizeOfTKEY
                     data_block_size = self._get_data_block_size(entries)
 
-                    # Write TABL entry
+                    # 写入 TABL 条目
                     f.seek(fo_table_block)
                     name_bytes = table_name.encode('ascii', errors='ignore')[:7]
                     f.write(name_bytes.ljust(8, b'\x00'))
                     f.write(struct.pack('<I', key_block_offset))
                     fo_table_block += self.SizeOfTABL
 
-                    # Write TKEY Header
+                    # 写入 TKEY 头部
                     f.seek(fo_key_block)
                     if table_name != "MAIN":
                         f.write(name_bytes.ljust(8, b'\x00'))
                     f.write(b"TKEY")
                     f.write(struct.pack('<I', key_block_size))
                     
-                    # Advance pointers
+                    # 移动指针
                     current_tkey_data_pos = f.tell()
                     fo_key_block = current_tkey_data_pos + key_block_size
 
-                    # Write TDAT Header
+                    # 写入 TDAT 头部
                     f.seek(fo_key_block)
                     tdat_offset = f.tell()
                     f.write(b"TDAT")
                     f.write(struct.pack('<I', data_block_size))
                     current_tdat_data_pos = f.tell()
 
-                    # Write Entries (TKEYs and TDATs)
-                    # Sort entries by Hash (standard GXT requirement for binary search)
+                    # 写入条目 (TKEY 和 TDAT)
+                    # 按哈希值排序条目 (GXT 二进制搜索的标准要求)
                     for hash_key, value in sorted(entries.items()):
-                        # Write Text Data
+                        # 写入文本数据
                         f.seek(current_tdat_data_pos)
-                        # SA uses UTF-8 or ANSI usually. Keeping original UTF-8 encoding logic.
+                        # SA 通常使用 UTF-8 或 ANSI。保持原始的 UTF-8 编码逻辑。
                         text_bytes = value.encode('utf-8') + b'\x00'
                         f.write(text_bytes)
                         
-                        # Calculate relative offset
+                        # 计算相对偏移量
                         data_offset = current_tdat_data_pos - tdat_offset - 8
                         current_tdat_data_pos = f.tell()
 
-                        # Write Key Data
+                        # 写入键数据
                         f.seek(current_tkey_data_pos)
                         f.write(struct.pack('<II', data_offset, hash_key))
                         current_tkey_data_pos += self.SizeOfTKEY
 
-                    # Update master offset for next table
+                    # 更新主偏移量，用于下一个表
                     fo_key_block = current_tdat_data_pos
                     key_block_offset = fo_key_block
 
@@ -238,7 +232,7 @@ class SAGXT:
                 row, column = 0, 0
                 for char in sorted(self.m_WideCharCollection):
                     if ord(char) <= 0x7F:
-                        continue  # Skip ASCII
+                        continue  # 跳过 ASCII
 
                     conv_code.write(f"m_Table[0x{ord(char):X}] = {{{row},{column}}};\n")
                     characters_set.write(char.encode('utf-16le'))
@@ -251,22 +245,22 @@ class SAGXT:
                         column = 0
             print("已生成辅助映射文件 (TABLE.txt, CHARACTERS.txt)")
         except Exception as e:
-            print(f"生成 辅助映射文件 输出失败: {e}")
+            print(f"生成辅助映射文件输出失败: {e}")
 
 
     def _get_data_block_size(self, table: dict) -> int:
         return sum(len(v.encode('utf-8')) + 1 for v in table.values())
 
     def _table_sort(self, item):
-        # MAIN table usually comes first in some tools, but alphabetical is standard
-        # Original logic: MAIN, then alphabetical
+        # MAIN 表在某些工具中通常在最前面，但按字母顺序是标准
+        # 原始逻辑: MAIN，然后按字母顺序
         return (item[0] != 'MAIN', item[0]) 
 
 def main():
     input_txt = "GTASA.txt"
     output_gxt = "wm_sachs.gxt"
     
-    # Allow command line args
+    # 允许命令行参数
     if len(sys.argv) > 1:
         input_txt = sys.argv[1]
     if len(sys.argv) > 2:

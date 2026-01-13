@@ -1891,7 +1891,7 @@ class FixedTableWidget(QTableWidget):
 class GXTEditorApp(QMainWindow):
     def __init__(self, file_to_open=None):
         super().__init__()
-        self.setWindowTitle(" GTA文本对话表编辑器 v2.5 作者：倾城剑舞")
+        self.setWindowTitle(" GTA文本对话表编辑器 v2.4 作者：倾城剑舞")
         self.resize(1240, 760)
         self.setAcceptDrops(True)
         
@@ -3878,7 +3878,7 @@ class GXTEditorApp(QMainWindow):
 
     def show_about(self):
         QMessageBox.information(self, "关于", 
-            "倾城剑舞 GXT 编辑器 v2.5\n"
+            "倾城剑舞 GXT 编辑器 v2.4\n"
             "支持 V/IV/VC/SA/III 的 GXT/TXT 编辑、导入导出。\n"
             "新增功能：文件关联、新建GXT、导出单个表、生成png透明汉化字体贴图、支持whm_table.dat编辑、码表转换工具、WHM文本提取工具。")
 
@@ -3893,7 +3893,7 @@ class GXTEditorApp(QMainWindow):
             "7. 保存：支持生成字符映射辅助文件（可选），并可记住选择。\n"
             "8. 导出：支持导出整个GXT或单个表为TXT文件。\n"
             "9. TXT 导入：支持单个或多个TXT导入并直接生成GXT。如果已有GXT打开，则会进行合并。\n"
-            "10. GTASA/GTA IV/V/WHM 特别说明：键名可为明文（如 T1_NAME_82），保存时自动转换对应哈希。\n"
+            "10. GTA IV/V/WHM 特别说明：键名可为明文（如 T1_NAME_82）或哈希（0xhash），保存时自动转换哈希。\n"
             "11. WHM Table 支持：可以打开和保存以及编辑 GTA4 民间汉化补丁的 whm_table.dat 文件。\n"
             "12. 字体生成器：工具菜单→GTA字体贴图生成器，用于创建游戏字体PNG文件。以及支持加载外部字体文件，点击预览图可放大查看。【仅限：汉化字体贴图】\n"
             "13. 码表转换工具：用于根据自定义码表文件，对GXT文本内容进行字符的批量替换或还原。\n"
@@ -3939,7 +3939,7 @@ class GXTEditorApp(QMainWindow):
         """设置修改状态并更新窗口标题"""
         if self.modified == modified: return
         self.modified = modified
-        title = " GTA文本对话表编辑器 v2.5 作者：倾城剑舞"
+        title = " GTA文本对话表编辑器 v2.4 作者：倾城剑舞"
         if self.filepath:
             title = f"{os.path.basename(self.filepath)} - {title}"
         if modified:
