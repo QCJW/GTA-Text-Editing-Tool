@@ -16,6 +16,7 @@
 2. 安装 PySide6 库：
     ```bash
     pip install PySide6
+    pip install numpy
     ```
 3. 将以下文件放置在同一目录下：
    - `main.py`（主程序）
