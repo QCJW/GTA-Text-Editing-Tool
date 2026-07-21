@@ -1917,6 +1917,9 @@ class GXTEditorApp(QMainWindow):
         self.version_filename_map = {'IV': 'GTA4.txt', 'VC': 'GTAVC.txt', 'SA': 'GTASA.txt', 'III': 'GTA3.txt', 'V': 'GTAV.txt'}
         self.modified = False
         
+        self.compare_mode = False
+        self.original_data = {}
+        
         self.whm_exporter = CHtmlTextExport()
         self.whm_batch_tool_instance = None
         
@@ -2465,48 +2468,145 @@ class GXTEditorApp(QMainWindow):
         self.update_status(f"查看表: {self.current_table}，共 {len(self.data.get(self.current_table, {}))} 个键值对")
 
     def refresh_keys(self):
-        """优化后的表格刷新方法"""
+        """优化后的表格刷新方法，支持对照模式"""
         if self.global_search_button.isChecked():
             self.search_key_value()
             return
             
         self.table.setUpdatesEnabled(False)
         try:
-            self.table.setColumnCount(3)
-            self.table.setHorizontalHeaderLabels(["序号", "键名 (Key)", "值 (Value)"])
+            if self.compare_mode:
+                self.table.setColumnCount(4)
+                self.table.setHorizontalHeaderLabels(["序号", "键名 (Key)", "类型", "内容"])
+            else:
+                self.table.setColumnCount(3)
+                self.table.setHorizontalHeaderLabels(["序号", "键名 (Key)", "值 (Value)"])
+            
             self.table.setRowCount(0)
             if self.current_table and self.current_table in self.data:
-                items_to_display = self.data[self.current_table].items()
-                self.table.setRowCount(len(items_to_display))
+                items_to_display = list(self.data[self.current_table].items())
                 
-                for idx, (k, v) in enumerate(items_to_display):
-                    display_value = v if len(v) <= self.value_display_limit else v[:self.value_display_limit] + "..."
+                if self.compare_mode:
+                    self.table.setRowCount(len(items_to_display) * 2)
                     
-                    idx_item = QTableWidgetItem(str(idx + 1))
-                    idx_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.table.setItem(idx, 0, idx_item)
-                    self.table.setItem(idx, 1, QTableWidgetItem(k))
-                    value_item = QTableWidgetItem(display_value)
-                    value_item.setData(Qt.ItemDataRole.UserRole, v)
-                    self.table.setItem(idx, 2, value_item)
+                    for idx, (k, v) in enumerate(items_to_display):
+                        display_value = v if len(v) <= self.value_display_limit else v[:self.value_display_limit] + "..."
+                        
+                        base_row = idx * 2
+                        
+                        idx_item = QTableWidgetItem(str(idx + 1))
+                        idx_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        self.table.setItem(base_row, 0, idx_item)
+                        
+                        self.table.setItem(base_row + 1, 0, QTableWidgetItem(""))
+                        self.table.setSpan(base_row, 0, 2, 1)
+                        
+                        key_item = QTableWidgetItem(k)
+                        key_item.setFlags(key_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                        key_item.setBackground(QColor(35, 38, 45))
+                        key_item.setForeground(QColor(100, 180, 255))
+                        self.table.setItem(base_row, 1, key_item)
+                        
+                        self.table.setItem(base_row + 1, 1, QTableWidgetItem(""))
+                        self.table.setSpan(base_row, 1, 2, 1)
+                        
+                        is_highlight_group = (idx % 2 == 0)
+                        
+                        type_original_item = QTableWidgetItem("原文")
+                        type_original_item.setFlags(type_original_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                        type_original_item.setBackground(QColor(45, 50, 60))
+                        type_original_item.setForeground(QColor(170, 170, 180))
+                        type_original_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        self.table.setItem(base_row, 2, type_original_item)
+                        
+                        type_translate_item = QTableWidgetItem("译文")
+                        type_translate_item.setFlags(type_translate_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                        type_translate_item.setBackground(QColor(50, 45, 60))
+                        type_translate_item.setForeground(QColor(180, 170, 200))
+                        type_translate_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        self.table.setItem(base_row + 1, 2, type_translate_item)
+                        
+                        original_text = self.original_data.get(self.current_table, {}).get(k, "")
+                        if original_text:
+                            display_original = original_text if len(original_text) <= self.value_display_limit else original_text[:self.value_display_limit] + "..."
+                            
+                            original_item = QTableWidgetItem(display_original)
+                            original_item.setData(Qt.ItemDataRole.UserRole, original_text)
+                            original_item.setFlags(original_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                            
+                            if is_highlight_group:
+                                original_item.setBackground(QColor(45, 50, 60))
+                                original_item.setForeground(QColor(170, 170, 180))
+                            
+                            self.table.setItem(base_row, 3, original_item)
+                        else:
+                            empty_item = QTableWidgetItem("")
+                            empty_item.setFlags(empty_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                            if is_highlight_group:
+                                empty_item.setBackground(QColor(45, 50, 60))
+                            self.table.setItem(base_row, 3, empty_item)
+                        
+                        value_item = QTableWidgetItem(display_value)
+                        value_item.setData(Qt.ItemDataRole.UserRole, v)
+                        
+                        if is_highlight_group:
+                            value_item.setBackground(QColor(45, 50, 60))
+                        
+                        self.table.setItem(base_row + 1, 3, value_item)
+                else:
+                    self.table.setRowCount(len(items_to_display))
+                    
+                    for idx, (k, v) in enumerate(items_to_display):
+                        display_value = v if len(v) <= self.value_display_limit else v[:self.value_display_limit] + "..."
+                        
+                        idx_item = QTableWidgetItem(str(idx + 1))
+                        idx_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        self.table.setItem(idx, 0, idx_item)
+                        self.table.setItem(idx, 1, QTableWidgetItem(k))
+                        
+                        value_item = QTableWidgetItem(display_value)
+                        value_item.setData(Qt.ItemDataRole.UserRole, v)
+                        self.table.setItem(idx, 2, value_item)
         finally:
             self.table.setUpdatesEnabled(True)
+            
+            if self.compare_mode:
+                self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
+                self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+                self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+                self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+                self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+                self.table.setColumnWidth(2, 60)
+            else:
+                self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+                self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+                self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+                self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
 
     def search_key_value(self):
         keyword = self.key_search.text().lower()
         self.table.setUpdatesEnabled(False)
         try:
+            if self.compare_mode:
+                self.table.setColumnCount(4)
+                self.table.setHorizontalHeaderLabels(["序号", "键名 (Key)", "类型", "内容"])
+            else:
+                self.table.setColumnCount(3)
+                self.table.setHorizontalHeaderLabels(["序号", "键名 (Key)", "值 (Value)"])
+            
             self.table.setRowCount(0)
-            self.table.setColumnCount(3)
-            self.table.setHorizontalHeaderLabels(["序号", "键名 (Key)", "值 (Value)"])
             
             if self.global_search_button.isChecked():
                 grouped_results = defaultdict(list)
                 total_matches = 0
                 for table_name, entries in self.data.items():
                     for original_idx, (k, v) in enumerate(entries.items()):
-                        if keyword in k.lower() or keyword in str(v).lower():
-                            grouped_results[table_name].append((original_idx, k, v))
+                        original_text = self.original_data.get(table_name, {}).get(k, "")
+                        search_texts = [k.lower(), str(v).lower()]
+                        if original_text:
+                            search_texts.append(original_text.lower())
+                        if any(keyword in st for st in search_texts):
+                            grouped_results[table_name].append((original_idx, k, v, original_text))
                             total_matches += 1
                 
                 if not grouped_results:
@@ -2521,13 +2621,17 @@ class GXTEditorApp(QMainWindow):
                     table_names.remove('MAIN')
                 sorted_table_names.extend(sorted(table_names))
 
-                total_rows = len(grouped_results) + total_matches
+                if self.compare_mode:
+                    total_rows = len(grouped_results) + total_matches * 2
+                else:
+                    total_rows = len(grouped_results) + total_matches
                 self.table.setRowCount(total_rows)
 
                 current_row = 0
                 header_font = QFont()
                 header_font.setBold(True)
                 header_bg = QColor(45, 45, 50)
+                col_count = 4 if self.compare_mode else 3
 
                 for table_name in sorted_table_names:
                     header_item = QTableWidgetItem(f"以下是：{table_name} 的键值对")
@@ -2535,23 +2639,84 @@ class GXTEditorApp(QMainWindow):
                     header_item.setBackground(header_bg)
                     header_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     self.table.setItem(current_row, 0, header_item)
-                    self.table.setSpan(current_row, 0, 1, 3)
+                    self.table.setSpan(current_row, 0, 1, col_count)
                     current_row += 1
 
-                    for original_idx, k, v in grouped_results[table_name]:
+                    for group_idx, (original_idx, k, v, original_text) in enumerate(grouped_results[table_name]):
                         display_value = v if len(v) <= self.value_display_limit else v[:self.value_display_limit] + "..."
                         
-                        idx_item = QTableWidgetItem(str(original_idx + 1))
-                        idx_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                        self.table.setItem(current_row, 0, idx_item)
-                        
-                        self.table.setItem(current_row, 1, QTableWidgetItem(k))
-                        
-                        value_item = QTableWidgetItem(display_value)
-                        value_item.setData(Qt.ItemDataRole.UserRole, v)
-                        self.table.setItem(current_row, 2, value_item)
-                        
-                        current_row += 1
+                        if self.compare_mode:
+                            is_highlight_group = (group_idx % 2 == 0)
+                            
+                            idx_item = QTableWidgetItem(str(original_idx + 1))
+                            idx_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                            self.table.setItem(current_row, 0, idx_item)
+                            
+                            self.table.setItem(current_row + 1, 0, QTableWidgetItem(""))
+                            self.table.setSpan(current_row, 0, 2, 1)
+                            
+                            key_item = QTableWidgetItem(k)
+                            key_item.setFlags(key_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                            key_item.setBackground(QColor(35, 38, 45))
+                            key_item.setForeground(QColor(100, 180, 255))
+                            self.table.setItem(current_row, 1, key_item)
+                            
+                            self.table.setItem(current_row + 1, 1, QTableWidgetItem(""))
+                            self.table.setSpan(current_row, 1, 2, 1)
+                            
+                            type_original_item = QTableWidgetItem("原文")
+                            type_original_item.setFlags(type_original_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                            type_original_item.setBackground(QColor(45, 50, 60))
+                            type_original_item.setForeground(QColor(170, 170, 180))
+                            type_original_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                            self.table.setItem(current_row, 2, type_original_item)
+                            
+                            type_translate_item = QTableWidgetItem("译文")
+                            type_translate_item.setFlags(type_translate_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                            type_translate_item.setBackground(QColor(50, 45, 60))
+                            type_translate_item.setForeground(QColor(180, 170, 200))
+                            type_translate_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                            self.table.setItem(current_row + 1, 2, type_translate_item)
+                            
+                            if original_text:
+                                display_original = original_text if len(original_text) <= self.value_display_limit else original_text[:self.value_display_limit] + "..."
+                                original_item = QTableWidgetItem(display_original)
+                                original_item.setData(Qt.ItemDataRole.UserRole, original_text)
+                                original_item.setFlags(original_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                                
+                                if is_highlight_group:
+                                    original_item.setBackground(QColor(45, 50, 60))
+                                    original_item.setForeground(QColor(170, 170, 180))
+                                
+                                self.table.setItem(current_row, 3, original_item)
+                            else:
+                                empty_item = QTableWidgetItem("")
+                                empty_item.setFlags(empty_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                                if is_highlight_group:
+                                    empty_item.setBackground(QColor(45, 50, 60))
+                                self.table.setItem(current_row, 3, empty_item)
+                            
+                            value_item = QTableWidgetItem(display_value)
+                            value_item.setData(Qt.ItemDataRole.UserRole, v)
+                            
+                            if is_highlight_group:
+                                value_item.setBackground(QColor(45, 50, 60))
+                            
+                            self.table.setItem(current_row + 1, 3, value_item)
+                            
+                            current_row += 2
+                        else:
+                            idx_item = QTableWidgetItem(str(original_idx + 1))
+                            idx_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                            self.table.setItem(current_row, 0, idx_item)
+                            
+                            self.table.setItem(current_row, 1, QTableWidgetItem(k))
+                            
+                            value_item = QTableWidgetItem(display_value)
+                            value_item.setData(Qt.ItemDataRole.UserRole, v)
+                            self.table.setItem(current_row, 2, value_item)
+                            
+                            current_row += 1
 
                 self.table.resizeColumnToContents(1)
                 self.update_status(f"全局搜索结果: {total_matches} 个匹配项")
@@ -2559,24 +2724,107 @@ class GXTEditorApp(QMainWindow):
                 if self.current_table and self.current_table in self.data:
                     matching_items = []
                     for original_idx, (k, v) in enumerate(self.data[self.current_table].items()):
-                        if keyword in k.lower() or keyword in str(v).lower():
-                            matching_items.append((original_idx, k, v))
+                        original_text = self.original_data.get(self.current_table, {}).get(k, "")
+                        search_texts = [k.lower(), str(v).lower()]
+                        if original_text:
+                            search_texts.append(original_text.lower())
+                        if any(keyword in st for st in search_texts):
+                            matching_items.append((original_idx, k, v, original_text))
                     
-                    self.table.setRowCount(len(matching_items))
-                    for row_idx, (original_idx, k, v) in enumerate(matching_items):
-                        display_value = v if len(v) <= self.value_display_limit else v[:self.value_display_limit] + "..."
-                        
-                        idx_item = QTableWidgetItem(str(original_idx + 1))
-                        idx_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                        self.table.setItem(row_idx, 0, idx_item)
-                        self.table.setItem(row_idx, 1, QTableWidgetItem(k))
-                        value_item = QTableWidgetItem(display_value)
-                        value_item.setData(Qt.ItemDataRole.UserRole, v)
-                        self.table.setItem(row_idx, 2, value_item)
+                    if self.compare_mode:
+                        self.table.setRowCount(len(matching_items) * 2)
+                        for row_idx, (original_idx, k, v, original_text) in enumerate(matching_items):
+                            display_value = v if len(v) <= self.value_display_limit else v[:self.value_display_limit] + "..."
+                            
+                            base_row = row_idx * 2
+                            
+                            is_highlight_group = (row_idx % 2 == 0)
+                            
+                            idx_item = QTableWidgetItem(str(original_idx + 1))
+                            idx_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                            self.table.setItem(base_row, 0, idx_item)
+                            
+                            self.table.setItem(base_row + 1, 0, QTableWidgetItem(""))
+                            self.table.setSpan(base_row, 0, 2, 1)
+                            
+                            key_item = QTableWidgetItem(k)
+                            key_item.setFlags(key_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                            key_item.setBackground(QColor(35, 38, 45))
+                            key_item.setForeground(QColor(100, 180, 255))
+                            self.table.setItem(base_row, 1, key_item)
+                            
+                            self.table.setItem(base_row + 1, 1, QTableWidgetItem(""))
+                            self.table.setSpan(base_row, 1, 2, 1)
+                            
+                            type_original_item = QTableWidgetItem("原文")
+                            type_original_item.setFlags(type_original_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                            type_original_item.setBackground(QColor(45, 50, 60))
+                            type_original_item.setForeground(QColor(170, 170, 180))
+                            type_original_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                            self.table.setItem(base_row, 2, type_original_item)
+                            
+                            type_translate_item = QTableWidgetItem("译文")
+                            type_translate_item.setFlags(type_translate_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                            type_translate_item.setBackground(QColor(50, 45, 60))
+                            type_translate_item.setForeground(QColor(180, 170, 200))
+                            type_translate_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                            self.table.setItem(base_row + 1, 2, type_translate_item)
+                            
+                            if original_text:
+                                display_original = original_text if len(original_text) <= self.value_display_limit else original_text[:self.value_display_limit] + "..."
+                                original_item = QTableWidgetItem(display_original)
+                                original_item.setData(Qt.ItemDataRole.UserRole, original_text)
+                                original_item.setFlags(original_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                                
+                                if is_highlight_group:
+                                    original_item.setBackground(QColor(45, 50, 60))
+                                    original_item.setForeground(QColor(170, 170, 180))
+                                
+                                self.table.setItem(base_row, 3, original_item)
+                            else:
+                                empty_item = QTableWidgetItem("")
+                                empty_item.setFlags(empty_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                                if is_highlight_group:
+                                    empty_item.setBackground(QColor(45, 50, 60))
+                                self.table.setItem(base_row, 3, empty_item)
+                            
+                            value_item = QTableWidgetItem(display_value)
+                            value_item.setData(Qt.ItemDataRole.UserRole, v)
+                            
+                            if is_highlight_group:
+                                value_item.setBackground(QColor(45, 50, 60))
+                            
+                            self.table.setItem(base_row + 1, 3, value_item)
+                    else:
+                        self.table.setRowCount(len(matching_items))
+                        for row_idx, (original_idx, k, v, original_text) in enumerate(matching_items):
+                            display_value = v if len(v) <= self.value_display_limit else v[:self.value_display_limit] + "..."
+                            
+                            idx_item = QTableWidgetItem(str(original_idx + 1))
+                            idx_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                            self.table.setItem(row_idx, 0, idx_item)
+                            self.table.setItem(row_idx, 1, QTableWidgetItem(k))
+                            
+                            value_item = QTableWidgetItem(display_value)
+                            value_item.setData(Qt.ItemDataRole.UserRole, v)
+                            self.table.setItem(row_idx, 2, value_item)
                     
                     self.update_status(f"在表 '{self.current_table}' 中搜索到: {len(matching_items)} 个匹配项")
         finally:
             self.table.setUpdatesEnabled(True)
+            
+            if self.compare_mode:
+                self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
+                self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+                self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+                self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+                self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+                self.table.setColumnWidth(2, 60)
+            else:
+                self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+                self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+                self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+                self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
 
     def validate_table_name(self, name):
         """验证表名是否符合当前版本的规则"""
@@ -2683,7 +2931,15 @@ class GXTEditorApp(QMainWindow):
         try:
             with open(filepath, 'w', encoding='utf-8') as f:
                 if self.version not in ['III', 'V'] and self.file_type != 'dat': f.write(f"[{self.current_table}]\n")
-                for k, v in sorted(self.data[self.current_table].items()): f.write(f"{k}={v}\n")
+                for k, v in sorted(self.data[self.current_table].items()): 
+                    if self.compare_mode and self.current_table in self.original_data and k in self.original_data[self.current_table]:
+                        original_text = self.original_data[self.current_table][k]
+                        if original_text:
+                            f.write(f"{k}={original_text};{v}\n")
+                        else:
+                            f.write(f"{k}={v}\n")
+                    else:
+                        f.write(f"{k}={v}\n")
             QMessageBox.information(self, "导出成功", f"表 '{self.current_table}' 已导出到:\n{filepath}")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导出失败: {str(e)}")
@@ -2697,34 +2953,54 @@ class GXTEditorApp(QMainWindow):
         if not self.current_table and not is_global_search:
             return
             
-        selected_rows = self.table.selectionModel().selectedRows()
+        selected_indexes = self.table.selectionModel().selectedIndexes()
+        selected_rows = sorted(set(idx.row() for idx in selected_indexes))
         count = len(selected_rows)
         
         if count == 0: return
 
         if count == 1:
-            row = selected_rows[0].row()
+            row = selected_rows[0]
             
             if self.table.columnSpan(row, 0) > 1:
                 return
 
+            if self.compare_mode:
+                if row % 2 == 0:
+                    QMessageBox.information(self, "提示", "原版文本行不可编辑，请在下方的汉化文本行进行编辑")
+                    return
+                
+                actual_row = row - 1
+            else:
+                actual_row = row
+
             if is_global_search:
                 table_name = ""
-                for i in range(row, -1, -1):
+                for i in range(actual_row, -1, -1):
                     if self.table.columnSpan(i, 0) > 1:
                         text = self.table.item(i, 0).text()
                         table_name = text.replace("以下是：", "").replace(" 的键值对", "")
                         break
                 if not table_name: return
 
-                key = self.table.item(row, 1).text()
+                key_item = self.table.item(actual_row, 1)
+                if not key_item: return
+                key = key_item.text()
             else:
                 table_name = self.current_table
-                key = self.table.item(row, 1).text()
+                key_item = self.table.item(actual_row, 1)
+                if not key_item: return
+                key = key_item.text()
                 
             original_value = self.data[table_name].get(key, "")
+            original_text = self.original_data.get(table_name, {}).get(key, "")
             
-            dlg = EditKeyDialog(self, title=f"编辑: {key}", key=key, value=original_value, version=self.version, file_type=self.file_type)
+            if self.compare_mode and original_text:
+                dlg = EditKeyDialog(self, title=f"编辑: {key}\n原版: {original_text[:50]}..." if len(original_text) > 50 else f"编辑: {key}\n原版: {original_text}", 
+                                   key=key, value=original_value, version=self.version, file_type=self.file_type)
+            else:
+                dlg = EditKeyDialog(self, title=f"编辑: {key}", key=key, value=original_value, version=self.version, file_type=self.file_type)
+            
             if dlg.exec() == QDialog.DialogCode.Accepted:
                 new_key, new_val = dlg.get_data()
                 
@@ -2734,6 +3010,8 @@ class GXTEditorApp(QMainWindow):
                 
                 if new_key != key:
                     del self.data[table_name][key]
+                    if table_name in self.original_data and key in self.original_data[table_name]:
+                        self.original_data[table_name][new_key] = self.original_data[table_name].pop(key)
                 self.data[table_name][new_key] = new_val
                 
                 self.search_key_value()
@@ -2743,16 +3021,29 @@ class GXTEditorApp(QMainWindow):
         elif True:
         
             original_entries = []
+            processed_rows = set()
 
-            for idx in selected_rows:
-                row = idx.row()
+            for row in selected_rows:
+
+                if row in processed_rows:
+                    continue
 
                 if self.table.columnSpan(row, 0) > 1:
                     continue
 
+                if self.compare_mode:
+                    if row % 2 == 0:
+                        continue
+                    actual_row = row - 1
+                    processed_rows.add(row)
+                    processed_rows.add(actual_row)
+                else:
+                    actual_row = row
+                    processed_rows.add(row)
+
                 table_name = None
                 if is_global_search:
-                    for i in range(row, -1, -1):
+                    for i in range(actual_row, -1, -1):
                         if self.table.columnSpan(i, 0) > 1:
                             text = self.table.item(i, 0).text()
                             table_name = text.replace("以下是：", "").replace(" 的键值对", "")
@@ -2763,11 +3054,9 @@ class GXTEditorApp(QMainWindow):
                 if not table_name:
                     continue
 
-                key_item = self.table.item(row, 1)
-
+                key_item = self.table.item(actual_row, 1)
                 if not key_item:
                     continue
-
                 key = key_item.text()
 
                 value = self.data.get(table_name, {}).get(key, "")
@@ -2845,6 +3134,8 @@ class GXTEditorApp(QMainWindow):
                         if old_key in edits:
                             new_key, new_value = edits[old_key]
                             new_table_dict[new_key] = new_value
+                            if self.compare_mode and table_name in self.original_data and old_key in self.original_data[table_name]:
+                                self.original_data[table_name][new_key] = self.original_data[table_name].pop(old_key)
                         else:
                             new_table_dict[old_key] = old_value
                     
@@ -2863,80 +3154,157 @@ class GXTEditorApp(QMainWindow):
             QMessageBox.information(self, "提示", "请先选择一个表")
             return
             
-        dlg = EditKeyDialog(self, title="添加键值对", version=self.version, file_type=self.file_type)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            result = dlg.get_data()
-            
-            if isinstance(result, list):
-                pairs = result
-                added_count = 0
-                duplicate_keys = []
+        if self.compare_mode:
+            dlg = EditKeyDialog(self, title="添加键值对（对照模式）", version=self.version, file_type=self.file_type)
+            if dlg.exec() == QDialog.DialogCode.Accepted:
+                result = dlg.get_data()
                 
-                for key, value in pairs:
-                    if key in self.data[self.current_table]:
-                        duplicate_keys.append(key)
-                        continue
-                        
-                    self.data[self.current_table][key] = value
-                    added_count += 1
+                if isinstance(result, list):
+                    pairs = result
+                    added_count = 0
+                    duplicate_keys = []
                     
-                self.refresh_keys()
-                
-                msg = f"成功添加 {added_count} 个键值对"
-                if duplicate_keys:
-                    msg += f"\n有 {len(duplicate_keys)} 个键已存在，未添加: {', '.join(duplicate_keys[:5])}"
-                    if len(duplicate_keys) > 5:
-                        msg += f" ... (共 {len(duplicate_keys)} 个)"
+                    for key, value in pairs:
+                        if key in self.data[self.current_table]:
+                            duplicate_keys.append(key)
+                            continue
+                            
+                        self.data[self.current_table][key] = value
+                        if self.current_table not in self.original_data:
+                            self.original_data[self.current_table] = {}
+                        self.original_data[self.current_table][key] = ""
+                        added_count += 1
                         
-                QMessageBox.information(self, "添加完成", msg)
-                self.update_status(f"批量添加了 {added_count} 个键值对")
-                if added_count > 0: self.set_modified(True)
+                    self.refresh_keys()
+                    
+                    msg = f"成功添加 {added_count} 个键值对"
+                    if duplicate_keys:
+                        msg += f"\n有 {len(duplicate_keys)} 个键已存在，未添加: {', '.join(duplicate_keys[:5])}"
+                        if len(duplicate_keys) > 5:
+                            msg += f" ... (共 {len(duplicate_keys)} 个)"
+                            
+                    QMessageBox.information(self, "添加完成", msg)
+                    self.update_status(f"批量添加了 {added_count} 个键值对")
+                    if added_count > 0: self.set_modified(True)
 
-            else:
-                new_key, new_val = result
-                if new_key in self.data[self.current_table]:
-                    QMessageBox.critical(self, "错误", f"键名 '{new_key}' 已存在！")
-                    return
-                self.data[self.current_table][new_key] = new_val
-                self.refresh_keys()
-                self.update_status(f"已添加键: {new_key}")
-                self.set_modified(True)
+                else:
+                    new_key, new_val = result
+                    if new_key in self.data[self.current_table]:
+                        QMessageBox.critical(self, "错误", f"键名 '{new_key}' 已存在！")
+                        return
+                    self.data[self.current_table][new_key] = new_val
+                    if self.current_table not in self.original_data:
+                        self.original_data[self.current_table] = {}
+                    self.original_data[self.current_table][new_key] = ""
+                    self.refresh_keys()
+                    self.update_status(f"已添加键: {new_key}")
+                    self.set_modified(True)
+        else:
+            dlg = EditKeyDialog(self, title="添加键值对", version=self.version, file_type=self.file_type)
+            if dlg.exec() == QDialog.DialogCode.Accepted:
+                result = dlg.get_data()
+                
+                if isinstance(result, list):
+                    pairs = result
+                    added_count = 0
+                    duplicate_keys = []
+                    
+                    for key, value in pairs:
+                        if key in self.data[self.current_table]:
+                            duplicate_keys.append(key)
+                            continue
+                            
+                        self.data[self.current_table][key] = value
+                        added_count += 1
+                        
+                    self.refresh_keys()
+                    
+                    msg = f"成功添加 {added_count} 个键值对"
+                    if duplicate_keys:
+                        msg += f"\n有 {len(duplicate_keys)} 个键已存在，未添加: {', '.join(duplicate_keys[:5])}"
+                        if len(duplicate_keys) > 5:
+                            msg += f" ... (共 {len(duplicate_keys)} 个)"
+                            
+                    QMessageBox.information(self, "添加完成", msg)
+                    self.update_status(f"批量添加了 {added_count} 个键值对")
+                    if added_count > 0: self.set_modified(True)
+
+                else:
+                    new_key, new_val = result
+                    if new_key in self.data[self.current_table]:
+                        QMessageBox.critical(self, "错误", f"键名 '{new_key}' 已存在！")
+                        return
+                    self.data[self.current_table][new_key] = new_val
+                    self.refresh_keys()
+                    self.update_status(f"已添加键: {new_key}")
+                    self.set_modified(True)
 
     def delete_key(self):
         is_global_search = self.global_search_button.isChecked()
         if not self.current_table and not is_global_search: return
         
-        rows = self.table.selectionModel().selectedRows()
+        selected_indexes = self.table.selectionModel().selectedIndexes()
+        rows = sorted(set(idx.row() for idx in selected_indexes))
         if not rows: return
         
-        msg_box = QMessageBox(QMessageBox.Icon.Question, "确认", f"是否删除选中的 {len(rows)} 个键值对？", 
+        processed_rows = set()
+        keys_to_delete = []
+        
+        for row_index in rows:
+            
+            if row_index in processed_rows:
+                continue
+            
+            if self.table.columnSpan(row_index, 0) > 1:
+                continue
+            
+            if self.compare_mode:
+                if row_index % 2 == 0:
+                    actual_row = row_index
+                else:
+                    actual_row = row_index - 1
+                
+                processed_rows.add(row_index)
+                processed_rows.add(actual_row + 1)
+            else:
+                actual_row = row_index
+                processed_rows.add(row_index)
+            
+            table_name = None
+            if is_global_search:
+                for i in range(actual_row, -1, -1):
+                    if self.table.columnSpan(i, 0) > 1:
+                        text = self.table.item(i, 0).text()
+                        table_name = text.replace("以下是：", "").replace(" 的键值对", "")
+                        break
+            else:
+                table_name = self.current_table
+            
+            if not table_name:
+                continue
+            
+            key_item = self.table.item(actual_row, 1)
+            if not key_item:
+                continue
+            key_to_delete = key_item.text()
+            
+            keys_to_delete.append((table_name, key_to_delete))
+        
+        unique_keys = list(dict.fromkeys(keys_to_delete))
+        
+        msg_box = QMessageBox(QMessageBox.Icon.Question, "确认", f"是否删除选中的 {len(unique_keys)} 个键值对？", 
                              QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, self)
         msg_box.button(QMessageBox.StandardButton.Yes).setText("是")
         msg_box.button(QMessageBox.StandardButton.No).setText("否")
         
         if msg_box.exec() == QMessageBox.StandardButton.Yes:
             deleted_count = 0
-            sorted_rows = sorted(rows, key=lambda idx: idx.row(), reverse=True)
-
-            for idx in sorted_rows:
-                row_index = idx.row()
-                if self.table.columnSpan(row_index, 0) > 1: continue
-
-                if is_global_search:
-                    table_name = ""
-                    for i in range(row_index, -1, -1):
-                        if self.table.columnSpan(i, 0) > 1:
-                            text = self.table.item(i, 0).text()
-                            table_name = text.replace("以下是：", "").replace(" 的键值对", "")
-                            break
-                    if not table_name: continue
-                    key_to_delete = self.table.item(row_index, 1).text()
-                else:
-                    table_name = self.current_table
-                    key_to_delete = self.table.item(row_index, 1).text()
-                
+            
+            for table_name, key_to_delete in unique_keys:
                 if table_name in self.data and key_to_delete in self.data[table_name]:
                     del self.data[table_name][key_to_delete]
+                    if self.compare_mode and table_name in self.original_data and key_to_delete in self.original_data[table_name]:
+                        del self.original_data[table_name][key_to_delete]
                     deleted_count += 1
 
             self.search_key_value()
@@ -2983,6 +3351,8 @@ class GXTEditorApp(QMainWindow):
         self.data.clear()
         self.filepath = None
         self.current_table = None
+        self.compare_mode = False
+        self.original_data = {}
         
         version_choice = dlg.get_value()
 
@@ -3030,6 +3400,8 @@ class GXTEditorApp(QMainWindow):
                 reader = getReader(version)
                 mm.seek(0)
                 self.data.clear()
+                self.compare_mode = False
+                self.original_data = {}
 
                 if reader.hasTables():
                     for name, offset in reader.parseTables(mm):
@@ -3063,6 +3435,8 @@ class GXTEditorApp(QMainWindow):
         try:
             parsed_data = gta5_gxt2.parse_gxt2(path)
             self.data.clear()
+            self.compare_mode = False
+            self.original_data = {}
 
             table_name = Path(path).stem.upper()
             self.data[table_name] = {f'0x{h:08X}': v for h, v in parsed_data.items()}
@@ -3122,6 +3496,9 @@ class GXTEditorApp(QMainWindow):
             blob = data[blob_start:blob_start + blob_size]
             
             self.data.clear()
+            self.compare_mode = False
+            self.original_data = {}
+            
             table_name = "whm_table"
             self.data[table_name] = {}
             
@@ -3187,6 +3564,8 @@ class GXTEditorApp(QMainWindow):
         try:
             temp_data = {}
             all_errors = []
+            temp_original_data = {}
+            contains_semicolon = False
 
             if version == 'V':
                 for file_path in files:
@@ -3197,13 +3576,31 @@ class GXTEditorApp(QMainWindow):
                     for h, v in parsed_dict.items():
                         temp_data[table_name][f'0x{h:08X}'] = v
             else:
-                temp_data, all_errors = self._load_standard_txt(files, version)
+                temp_data, all_errors, temp_original_data, contains_semicolon = self._load_standard_txt(files, version)
 
             progress.setValue(1)
 
             if all_errors:
                 self._show_txt_import_errors(all_errors, version)
                 return
+
+            if contains_semicolon:
+                msg_box = QMessageBox(QMessageBox.Icon.Question, "检测到对照格式",
+                                      "在导入的文件中检测到带分号的原版文本格式（KEY=原版文本;汉化文本）。\n\n是否开启对照模式显示？\n- 是：同时显示原版文本和汉化文本，方便对照编辑\n- 否：只显示汉化文本（默认模式）",
+                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, self)
+                msg_box.button(QMessageBox.StandardButton.Yes).setText("是")
+                msg_box.button(QMessageBox.StandardButton.No).setText("否")
+                reply = msg_box.exec()
+                
+                self.compare_mode = (reply == QMessageBox.StandardButton.Yes)
+                if self.compare_mode:
+                    if not is_merge_mode:
+                        self.original_data = temp_original_data
+                    else:
+                        for table_name, table_data in temp_original_data.items():
+                            if table_name not in self.original_data:
+                                self.original_data[table_name] = {}
+                            self.original_data[table_name].update(table_data)
 
             if not is_merge_mode:
                 self.data = temp_data
@@ -3215,9 +3612,11 @@ class GXTEditorApp(QMainWindow):
                     self.file_type = 'gxt'
                 self.filepath = None
                 self.set_modified(True)
-                QMessageBox.information(self, "成功", f"已成功打开 {len(files)} 个TXT文件\n版本: {version}\n表数量: {len(self.data)}")
+                
+                mode_text = "（对照模式）" if self.compare_mode else ""
+                QMessageBox.information(self, "成功", f"已成功打开 {len(files)} 个TXT文件\n版本: {version}\n表数量: {len(self.data)}{mode_text}")
             else:
-                self._merge_data_with_optimized_prompt(temp_data)
+                self._merge_data_with_optimized_prompt(temp_data, temp_original_data)
 
             self.table_search.clear()
             self.filter_tables()
@@ -3225,7 +3624,8 @@ class GXTEditorApp(QMainWindow):
                 self.search_key_value()
             if self.table_list.count() > 0:
                 self.table_list.setCurrentRow(0)
-            self.update_status(f"已成功处理 {len(files)} 个TXT文件 (版本: {version})")
+            mode_text = "（对照模式）" if self.compare_mode else ""
+            self.update_status(f"已成功处理 {len(files)} 个TXT文件 (版本: {version}){mode_text}")
             self._update_ui_for_version()
 
         except Exception as e:
@@ -3309,7 +3709,7 @@ class GXTEditorApp(QMainWindow):
         
         dialog.exec()
 
-    def _merge_data_with_optimized_prompt(self, temp_data):
+    def _merge_data_with_optimized_prompt(self, temp_data, temp_original_data=None):
         """优化的合并逻辑：先检查所有冲突，再进行一次性询问"""
         existing_keys = set((table, key) for table, keys in self.data.items() for key in keys)
         conflicts = []
@@ -3343,6 +3743,14 @@ class GXTEditorApp(QMainWindow):
                 else:
                     self.data[table_name][key] = value
                     added_count += 1
+        
+        if temp_original_data:
+            for table_name, table_data in temp_original_data.items():
+                if table_name not in self.original_data:
+                    self.original_data[table_name] = {}
+                for key, value in table_data.items():
+                    if key not in self.original_data[table_name] or should_overwrite:
+                        self.original_data[table_name][key] = value
         
         if added_count > 0 or overwritten_count > 0:
             self.set_modified(True)
@@ -3572,7 +3980,15 @@ class GXTEditorApp(QMainWindow):
                     for i, (t, d) in enumerate(sorted(self.data.items())):
                         if i > 0: f.write("\n\n")
                         if self.version not in ['III', 'V'] and self.file_type != 'dat': f.write(f"[{t}]\n")
-                        for k, v in sorted(d.items()): f.write(f"{k}={v}\n")
+                        for k, v in sorted(d.items()): 
+                            if self.compare_mode and t in self.original_data and k in self.original_data[t]:
+                                original_text = self.original_data[t][k]
+                                if original_text:
+                                    f.write(f"{k}={original_text};{v}\n")
+                                else:
+                                    f.write(f"{k}={v}\n")
+                            else:
+                                f.write(f"{k}={v}\n")
                 QMessageBox.information(self, "导出成功", f"已导出到: {filepath}")
             else:
                 if self.version == 'III' or self.version == 'V' or self.file_type == 'dat':
@@ -3613,7 +4029,15 @@ class GXTEditorApp(QMainWindow):
                 for t, d in sorted(self.data.items()):
                     with open(os.path.join(export_dir, f"{t}.txt"), 'w', encoding='utf-8') as f:
                         f.write(f"[{t}]\n")
-                        for k, v in sorted(d.items()): f.write(f"{k}={v}\n")
+                        for k, v in sorted(d.items()): 
+                            if self.compare_mode and t in self.original_data and k in self.original_data[t]:
+                                original_text = self.original_data[t][k]
+                                if original_text:
+                                    f.write(f"{k}={original_text};{v}\n")
+                                else:
+                                    f.write(f"{k}={v}\n")
+                            else:
+                                f.write(f"{k}={v}\n")
                 QMessageBox.information(self, "导出成功", f"已导出 {len(self.data)} 个文件到:\n{export_dir}")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导出失败: {str(e)}")
@@ -3621,11 +4045,14 @@ class GXTEditorApp(QMainWindow):
     def _load_standard_txt(self, files, version):
         """
         重构和优化的标准TXT文件加载器，提供更精确的错误诊断。
+        支持带分号的VCS格式：KEY=原版文本;汉化文本
         """
         data = {}
+        original_data = {}
         all_errors = []
         hash_tracker = {} 
         has_tables = version not in ['III', 'V', 'WHM']
+        contains_semicolon = False
 
         for file_path in files:
             current_table = None
@@ -3634,6 +4061,8 @@ class GXTEditorApp(QMainWindow):
                 current_table = table_name_map.get(version)
                 if current_table and current_table not in data:
                     data[current_table] = {}
+                if current_table and current_table not in original_data:
+                    original_data[current_table] = {}
             
             try:
                 with open(file_path, 'r', encoding='utf-8-sig') as f:
@@ -3654,6 +4083,19 @@ class GXTEditorApp(QMainWindow):
                 if not line_content or line_content.startswith('//') or line_content.startswith('#'):
                     continue
                 
+                if line_content.startswith(';') and '=' in line_content:
+                    vcs_line = line_content[1:]
+                    if '=' in vcs_line:
+                        vcs_key, vcs_value = vcs_line.split('=', 1)
+                        vcs_key = vcs_key.strip().upper()
+                        vcs_value = vcs_value.strip()
+                        if vcs_key and current_table:
+                            if current_table not in original_data:
+                                original_data[current_table] = {}
+                            original_data[current_table][vcs_key] = vcs_value
+                            contains_semicolon = True
+                    continue
+                
                 if line_content.startswith('[') and line_content.endswith(']'):
                     if has_tables:
                         table_name = line_content[1:-1].strip().upper()
@@ -3661,6 +4103,8 @@ class GXTEditorApp(QMainWindow):
                             current_table = table_name
                             if current_table not in data:
                                 data[current_table] = {}
+                            if current_table not in original_data:
+                                original_data[current_table] = {}
                     else:
                         msg = f"格式错误: 当前版本 ({version}) 不支持表，但文件中发现了表头 '{line_content}'"
                         all_errors.append((file_path, line_num, line_content, msg))
@@ -3691,7 +4135,7 @@ class GXTEditorApp(QMainWindow):
                         if (version == 'IV' or version == 'WHM') and not key.lower().startswith('0x'):
                             final_key = f'0x{gta4_gxt_hash(key):08X}'
                             is_hash_conversion = True
-                            plaintext_key_for_hash = key # 记录原始明文
+                            plaintext_key_for_hash = key
                         else:
                             final_key = key.upper() if version in ['VC', 'III'] or (version == 'SA' and not key.startswith('0x')) else key
     
@@ -3712,14 +4156,28 @@ class GXTEditorApp(QMainWindow):
                                 colliding_keys_str = ", ".join(f"'{k}'" for k in colliding_keys)
                                 msg = f"严重错误：哈希碰撞！在表 '{current_table}' 中，多个明文键 ({colliding_keys_str}) 均生成了同一个哈希 '{final_key}'"
                                 all_errors.append((file_path, line_num, line_content, msg))
-                                continue # 发生碰撞，停止处理此行
+                                continue
     
-                        data[current_table][final_key] = value
+                        if ';' in value:
+                            contains_semicolon = True
+                            parts = value.split(';', 1)
+                            original_text = parts[0].strip()
+                            translated_text = parts[1].strip() if len(parts) > 1 else ""
+                            
+                            if translated_text:
+                                data[current_table][final_key] = translated_text
+                            else:
+                                data[current_table][final_key] = original_text
+                            
+                            if original_text:
+                                original_data[current_table][final_key] = original_text
+                        else:
+                            data[current_table][final_key] = value
                 
                 else:
                     all_errors.append((file_path, line_num, line_content, "格式错误: 行既不是表头也不是 'key=value' 格式"))
 
-        return data, all_errors
+        return data, all_errors, original_data, contains_semicolon
 
     def open_codepage_converter(self):
         """打开码表转换工具"""
